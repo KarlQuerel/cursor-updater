@@ -3,6 +3,20 @@
 DOWNLOAD_DIR="$HOME/Downloads"
 DEST="$HOME/.local/bin/cursor.AppImage"
 
+# --- Step 0: Help option ---
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    echo "Usage: $0"
+    echo
+    echo "Updates the Cursor Linux AppImage."
+    echo "1. Finds the newest downloaded Cursor AppImage in ~/Downloads."
+    echo "2. Kills any running Cursor instances."
+    echo "3. Updates ~/.local/bin/cursor.AppImage."
+    echo "4. Cleans old Cursor AppImages in Downloads."
+    echo
+    echo "Make sure you downloaded the Linux AppImage (x64) from: https://cursor.com/download"
+    exit 0
+fi
+
 # --- Step 1: Check if AppImage exists ---
 NEW=$(ls -t "$DOWNLOAD_DIR"/Cursor-*.AppImage 2>/dev/null | head -n 1)
 if [[ -z "$NEW" ]]; then

@@ -36,7 +36,6 @@ VERSION_PATTERN = re.compile(r"cursor-([0-9.]+)\.AppImage")
 
 # UI settings
 ESC_KEY = 27
-INVALID_CHOICE_DELAY = 1.5
 
 # Menu options
 MENU_OPTIONS = {
@@ -49,5 +48,3 @@ MENU_OPTIONS = {
 # Messages
 MSG_WAIT_KEY = "Press any key to return to menu..."
 MSG_EXITING = "Exiting..."
-MSG_INVALID_CHOICE = "❌ Invalid choice: '{}'. Please press 1, 2, 3, or 4."
-

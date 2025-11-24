@@ -48,7 +48,7 @@ python3 cursor_updater.py
 chmod +x cursor_updater.py
 ```
 
-**Python not installed**
+**"Python not installed"**
 
 ```bash
 # Ubuntu/Debian

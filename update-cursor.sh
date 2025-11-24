@@ -28,13 +28,47 @@ echo "📦 Found: $NEW"
 
 # --- Step 2: Kill all running Cursor processes ---
 echo "🛑 Killing running Cursor instances..."
-pkill -9 -f "/tmp/.mount_Cursor" || true
 
-# --- Step 2b: Wait until all Cursor processes are gone ---
-echo "⏳ Waiting for Cursor to quit..."
-while pgrep -f "/tmp/.mount_Cursor" > /dev/null; do
-    sleep 1
-done
+# Function to check if any Cursor processes are running
+cursor_running() {
+    # Check for processes using the AppImage or mount directory
+    pgrep -f "/tmp/.mount_Cursor" > /dev/null 2>&1 && return 0
+    pgrep -f "cursor.AppImage" > /dev/null 2>&1 && return 0
+    pgrep -f "Cursor.AppImage" > /dev/null 2>&1 && return 0
+    # Check if destination file is in use
+    if [[ -f "$DEST" ]]; then
+        lsof "$DEST" > /dev/null 2>&1 && return 0
+    fi
+    # Check for cursor processes by name (more specific)
+    pgrep -x "cursor" > /dev/null 2>&1 && return 0
+    pgrep -x "Cursor" > /dev/null 2>&1 && return 0
+    return 1
+}
+
+# Kill processes if any are running
+if cursor_running; then
+    # Try multiple methods to kill Cursor
+    pkill -9 -f "/tmp/.mount_Cursor" 2>/dev/null || true
+    pkill -9 -f "cursor.AppImage" 2>/dev/null || true
+    pkill -9 -f "Cursor.AppImage" 2>/dev/null || true
+    pkill -9 -x cursor 2>/dev/null || true
+    pkill -9 -x Cursor 2>/dev/null || true
+    
+    # --- Step 2b: Wait until all Cursor processes are gone ---
+    echo "⏳ Waiting for Cursor to quit..."
+    MAX_WAIT=30
+    WAITED=0
+    while cursor_running && [ $WAITED -lt $MAX_WAIT ]; do
+        sleep 1
+        WAITED=$((WAITED + 1))
+    done
+    
+    if cursor_running; then
+        echo "❌ Error: Cursor processes are still running after ${MAX_WAIT}s timeout"
+        echo "   Please manually close all Cursor windows and try again."
+        exit 1
+    fi
+fi
 
 # --- Step 3: Update AppImage safely ---
 echo "📁 Updating $DEST..."
@@ -49,5 +83,6 @@ echo "✨ Updated Cursor to version: $VERSION"
 
 # --- Step 5: Clean old AppImages ---
 echo "🧹 Cleaning old AppImages..."
-find "$DOWNLOAD_DIR" -type f -name "Cursor-*.AppImage" ! -newer "$NEW" -delete
+# Delete old AppImages, but keep the one we just used (and any newer ones)
+find "$DOWNLOAD_DIR" -type f -name "Cursor-*.AppImage" ! -newer "$NEW" ! -samefile "$NEW" -delete
 echo "✔ Done."

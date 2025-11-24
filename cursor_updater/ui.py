@@ -4,19 +4,15 @@ import os
 import platform
 import sys
 import termios
-import time
 import tty
 
 from cursor_updater.config import (
     BOLD_BLUE,
     GREEN,
-    RED,
     ESC_KEY,
-    INVALID_CHOICE_DELAY,
     MENU_OPTIONS,
     MSG_WAIT_KEY,
     MSG_EXITING,
-    MSG_INVALID_CHOICE,
     CURSOR_DIR,
     DOWNLOADS_DIR,
     ACTIVE_SYMLINK,
@@ -40,6 +36,25 @@ def getch() -> str:
     try:
         tty.setraw(sys.stdin.fileno())
         return sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
+def getch_timeout(timeout: float = 0.1) -> str:
+    """Read a single character with timeout. Returns empty string if timeout."""
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(sys.stdin.fileno())
+        # Set non-blocking mode with timeout
+        new_settings = termios.tcgetattr(fd)
+        new_settings[6][termios.VMIN] = 0  # Non-blocking
+        new_settings[6][termios.VTIME] = int(
+            timeout * 10
+        )  # Timeout in tenths of seconds
+        termios.tcsetattr(fd, termios.TCSADRAIN, new_settings)
+        char = sys.stdin.read(1)
+        return char if char else ""
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
@@ -226,19 +241,36 @@ def handle_menu_choice(choice: str) -> None:
         wait_for_key()
     elif choice in ("q", "4"):
         exit_app()
-    else:
-        print(format_message(MSG_INVALID_CHOICE.format(choice), RED))
-        time.sleep(INVALID_CHOICE_DELAY)
 
 
 def get_user_choice() -> str:
     """Get user menu choice."""
-    print(format_message("  Press [1-4] to select: "), end="", flush=True)
-    choice = getch()
+    while True:
+        print(format_message("  Press [1-4] to select: "), end="", flush=True)
+        choice = getch()
 
-    if ord(choice) == ESC_KEY:
-        exit_app()
+        # Check if it's an ESC character
+        if ord(choice) == ESC_KEY:
+            # Check if it's an escape sequence (arrow keys, etc.) or standalone ESC
+            # Use a longer timeout to ensure we catch escape sequences
+            next_char = getch_timeout(0.15)
+            if not next_char:
+                # No character followed ESC - it's a standalone ESC, exit
+                exit_app()
+            # ESC followed by characters - it's an escape sequence, consume and ignore
+            while True:
+                char = getch_timeout(0.05)
+                if not char:
+                    break
+            # Clear the prompt line
+            print("\r" + " " * 60 + "\r", end="", flush=True)
+            continue
 
-    choice = choice.strip().lower()
-    print(choice)
-    return choice
+        # Check if it's a valid menu choice
+        choice = choice.strip().lower()
+        if choice in ("1", "2", "3", "4", "q"):
+            print(choice)
+            return choice
+
+        # Invalid character - clear and continue
+        print("\r" + " " * 60 + "\r", end="", flush=True)

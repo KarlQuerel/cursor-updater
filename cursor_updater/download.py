@@ -7,7 +7,7 @@ from urllib.error import URLError, HTTPError
 
 from cursor_updater.config import (
     DOWNLOADS_DIR,
-    ACTIVE_SYMLINK,
+    CURSOR_APPIMAGE,
     CHUNK_SIZE,
     DOWNLOAD_TIMEOUT,
     USER_AGENT,
@@ -88,8 +88,16 @@ def create_symlink(target: Path, link: Path) -> bool:
     """Create a symlink, removing existing one if present."""
     link.parent.mkdir(parents=True, exist_ok=True)
 
-    if link.exists():
-        link.unlink()
+    if link.exists() or link.is_symlink():
+        if link.is_symlink():
+            link.unlink()
+        else:
+            # If it's a regular file, backup it first
+            backup_path = link.with_suffix(".AppImage.backup")
+            if backup_path.exists():
+                backup_path.unlink()
+            link.rename(backup_path)
+            print_info("Backed up existing Cursor AppImage")
 
     try:
         link.symlink_to(target)
@@ -106,10 +114,11 @@ def select_version(version: str) -> bool:
         print_error(f"Version {version} not found locally")
         return False
 
-    if create_symlink(appimage_path, ACTIVE_SYMLINK):
-        print_success(f"{version} is now the active Cursor version")
+    if create_symlink(appimage_path, CURSOR_APPIMAGE):
+        print_success(
+            f"{version} is now the active Cursor version. Please restart Cursor to use it."
+        )
         return True
 
     print_error(f"Failed to activate {version}")
     return False
-

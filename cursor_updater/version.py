@@ -2,8 +2,12 @@
 
 import json
 import platform
+import shutil
+import subprocess
+import tempfile
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
@@ -16,7 +20,7 @@ from cursor_updater.config import (
     USER_AGENT,
     VERSION_PATTERN,
     DOWNLOADS_DIR,
-    ACTIVE_SYMLINK,
+    CURSOR_APPIMAGE,
 )
 
 
@@ -132,9 +136,7 @@ def get_platform_versions(version_history: dict) -> list[str]:
     try:
         versions = version_history.get("versions", [])
         return [
-            v["version"]
-            for v in versions
-            if v.get("platforms", {}).get(platform_name)
+            v["version"] for v in versions if v.get("platforms", {}).get(platform_name)
         ]
     except (KeyError, ValueError):
         return []
@@ -174,28 +176,125 @@ def get_download_url(version: str) -> Optional[str]:
     return None
 
 
-def get_local_version() -> Optional[str]:
-    """Get currently active local version."""
-    if not ACTIVE_SYMLINK.exists() or not ACTIVE_SYMLINK.is_symlink():
-        return None
-
+def get_running_cursor_path() -> Optional[Path]:
+    """Find the path to the currently running Cursor executable from process list."""
     try:
-        target = ACTIVE_SYMLINK.resolve()
-        return extract_version_from_filename(target.name)
-    except (OSError, ValueError):
-        return None
+        result = subprocess.run(
+            ["ps", "aux"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        for line in result.stdout.splitlines():
+            if "cursor" in line.lower() and ".AppImage" in line:
+                parts = line.split()
+                for part in parts:
+                    if part.endswith(".AppImage") and "cursor" in part.lower():
+                        path = Path(part)
+                        if path.exists():
+                            return path.resolve()
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
+        pass
+    return None
+
+
+def extract_version_from_appimage(appimage_path: Path) -> Optional[str]:
+    """Extract version from AppImage file (filename or embedded desktop file)."""
+    # First try to extract from filename
+    version = extract_version_from_filename(appimage_path.name)
+    if version:
+        return version
+
+    # Try to extract the AppImage and read the desktop file for exact version
+    extract_dir = None
+    try:
+        # Create temporary directory for extraction
+        extract_dir = Path(tempfile.mkdtemp(prefix="cursor_version_"))
+
+        # Extract AppImage
+        result = subprocess.run(
+            [str(appimage_path), "--appimage-extract"],
+            cwd=str(extract_dir),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        if result.returncode == 0:
+            # Look for desktop file
+            desktop_files = list(extract_dir.glob("**/*.desktop"))
+            for desktop_file in desktop_files:
+                try:
+                    with open(desktop_file, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if line.startswith("X-AppImage-Version="):
+                                version = line.split("=", 1)[1].strip()
+                                if version:
+                                    return version
+                except (OSError, UnicodeDecodeError):
+                    continue
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
+        pass
+    finally:
+        # Clean up extracted files
+        if extract_dir and extract_dir.exists():
+            try:
+                shutil.rmtree(extract_dir)
+            except OSError:
+                pass
+
+    # Fallback: try strings command as last resort
+    try:
+        result = subprocess.run(
+            ["strings", str(appimage_path)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        # Look for X-AppImage-Version in strings output
+        for line in result.stdout.splitlines():
+            if "X-AppImage-Version=" in line:
+                version = line.split("=", 1)[1].strip()
+                if version:
+                    return version
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
+        pass
+
+    return None
+
+
+def get_local_version() -> Optional[str]:
+    """Get currently active local version from the actual Cursor AppImage."""
+    # Check the actual Cursor AppImage location
+    if CURSOR_APPIMAGE.exists():
+        version = extract_version_from_appimage(CURSOR_APPIMAGE)
+        if version:
+            return version
+
+    # Fallback: try to find running Cursor process
+    running_path = get_running_cursor_path()
+    if running_path:
+        version = extract_version_from_appimage(running_path)
+        if version:
+            return version
+
+    return None
 
 
 def get_latest_local_version() -> Optional[str]:
-    """Get latest locally available version."""
+    """Get latest locally available version from downloads directory."""
     if not DOWNLOADS_DIR.exists():
         return None
 
-    versions = [
-        extract_version_from_filename(appimage.name)
-        for appimage in DOWNLOADS_DIR.glob("cursor-*.AppImage")
-    ]
-    versions = [v for v in versions if v]
+    versions = []
+    for appimage in DOWNLOADS_DIR.glob("cursor-*.AppImage"):
+        # Try filename first, then extract from file
+        version = extract_version_from_filename(appimage.name)
+        if not version:
+            version = extract_version_from_appimage(appimage)
+        if version:
+            versions.append(version)
 
     if not versions:
         return None
@@ -211,4 +310,3 @@ def get_version_status() -> VersionInfo:
         latest_local=get_latest_local_version(),
         latest_remote=get_latest_remote_version(),
     )
-

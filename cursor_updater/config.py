@@ -4,9 +4,8 @@ from pathlib import Path
 import re
 
 # Directory paths
-CURSOR_DIR = Path.home() / ".local" / "share" / "cvm"
-DOWNLOADS_DIR = CURSOR_DIR / "app-images"
-ACTIVE_SYMLINK = CURSOR_DIR / "active"
+CURSOR_APPIMAGE = Path.home() / ".local" / "bin" / "cursor.AppImage"
+DOWNLOADS_DIR = Path.home() / ".local" / "share" / "cursor-updater" / "app-images"
 CACHE_FILE = Path("/tmp/cursor_versions.json")
 
 # Cache settings
@@ -27,8 +26,6 @@ GREEN = "\033[32m"
 RED = "\033[31m"
 NC = "\033[0m"
 BOLD = "\033[1m"
-BOLD_RED = "\033[1;31m"
-BOLD_GREEN = "\033[1;32m"
 BOLD_BLUE = "\033[1;34m"
 
 # Patterns

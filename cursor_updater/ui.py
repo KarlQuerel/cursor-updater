@@ -13,9 +13,8 @@ from cursor_updater.config import (
     MENU_OPTIONS,
     MSG_WAIT_KEY,
     MSG_EXITING,
-    CURSOR_DIR,
+    CURSOR_APPIMAGE,
     DOWNLOADS_DIR,
-    ACTIVE_SYMLINK,
     CACHE_FILE,
 )
 from cursor_updater.version import (
@@ -180,15 +179,16 @@ def show_help() -> None:
 
     print(format_message("How it works:"))
     print("  • This tool manages Cursor AppImage versions on your system")
-    print(f"  • AppImages are stored in: {DOWNLOADS_DIR}")
-    print(f"  • The active version is set via symlink: {ACTIVE_SYMLINK}")
+    print(f"  • Cursor is installed at: {CURSOR_APPIMAGE}")
+    print(f"  • Downloaded AppImages are stored in: {DOWNLOADS_DIR}")
     print(f"  • Version information is cached for 15 minutes at: {CACHE_FILE}")
     print()
 
     print(format_message("Directory Structure:"))
-    print(f"  {CURSOR_DIR}/")
-    print("    ├── app-images/     (Downloaded AppImage files)")
-    print("    └── active          (Symlink to active version)")
+    print(f"  {CURSOR_APPIMAGE.parent}/")
+    print("    └── cursor.AppImage  (Active Cursor installation)")
+    print(f"  {DOWNLOADS_DIR.parent}/")
+    print("    └── app-images/       (Downloaded AppImage files)")
     print()
 
     print(format_message("Platform Detection:"))
@@ -205,7 +205,10 @@ def show_help() -> None:
     print()
     print("  2. Update Cursor to latest version")
     print("     - Downloads the latest version if not already present")
-    print("     - Activates the latest version via symlink")
+    print(
+        "     - Creates a symlink from ~/.local/bin/cursor.AppImage to the selected version"
+    )
+    print("     - You'll need to restart Cursor to use the new version")
     print()
     print("  3. Help")
     print("     - Shows this help information")
@@ -216,7 +219,13 @@ def show_help() -> None:
 
     print(format_message("Tips:"))
     print("  • Press ESC key at any time to exit")
-    print("  • Old AppImage versions are kept in app-images/ for rollback")
+    print("  • Downloaded AppImage versions are kept in app-images/ for reference")
+    print(
+        "  • The active version is managed via symlink at ~/.local/bin/cursor.AppImage"
+    )
+    print(
+        "  • If cursor.AppImage is a regular file, it will be backed up before creating symlink"
+    )
     print("  • The cache speeds up version checks (auto-refreshes every 15 min)")
     print("  • If network issues occur, the tool will use stale cache if available")
     print()

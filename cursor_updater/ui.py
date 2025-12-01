@@ -4,6 +4,7 @@ import os
 import sys
 import termios
 import tty
+import unicodedata
 from pathlib import Path
 
 from cursor_updater.config import (
@@ -38,12 +39,18 @@ from cursor_updater.output import (
 from cursor_updater.spinner import show_spinner
 
 
-def getch() -> str:
-    """Read a single character from stdin without requiring Enter."""
+def _setup_raw_input() -> tuple[int, list]:
+    """Setup terminal for raw input. Returns (fd, old_settings)."""
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
+    tty.setraw(fd)
+    return fd, old_settings
+
+
+def getch() -> str:
+    """Read a single character from stdin without requiring Enter."""
+    fd, old_settings = _setup_raw_input()
     try:
-        tty.setraw(sys.stdin.fileno())
         return sys.stdin.read(1)
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
@@ -51,16 +58,13 @@ def getch() -> str:
 
 def getch_timeout(timeout: float = 0.1) -> str:
     """Read a single character with timeout. Returns empty string if timeout."""
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
+    fd, old_settings = _setup_raw_input()
     try:
-        tty.setraw(sys.stdin.fileno())
         new_settings = termios.tcgetattr(fd)
         new_settings[6][termios.VMIN] = 0
         new_settings[6][termios.VTIME] = int(timeout * 10)
         termios.tcsetattr(fd, termios.TCSADRAIN, new_settings)
-        char = sys.stdin.read(1)
-        return char if char else ""
+        return sys.stdin.read(1) or ""
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
@@ -70,51 +74,69 @@ def clear_screen() -> None:
     os.system("clear" if os.name != "nt" else "cls")
 
 
+def _get_menu_width() -> int:
+    """Calculate the menu box width."""
+    menu_lines = [
+        f"  {key}. {description}" for key, description in MENU_OPTIONS.items()
+    ]
+    return max(_get_display_width(line) for line in menu_lines) + 8
+
+
 def print_header() -> None:
-    """Print the application header."""
+    """Print the application header centered above the menu."""
     print()
     header_art = [
         "      ▄▖▖▖▄▖▄▖▄▖▄▖  ▖▖▄▖▄ ▄▖▄▖▄▖▄▖",
         "      ▌ ▌▌▙▘▚ ▌▌▙▘  ▌▌▙▌▌▌▌▌▐ ▙▖▙▘",
         "      ▙▖▙▌▌▌▄▌▙▌▌▌  ▙▌▌ ▙▘▛▌▐ ▙▖▌▌",
     ]
+    menu_width = _get_menu_width()
+    
     for line in header_art:
-        print(format_unindented(line, BOLD_BLUE))
+        stripped = line.lstrip()
+        line_width = _get_display_width(stripped)
+        left_padding = (menu_width - line_width) // 2
+        right_padding = menu_width - line_width - left_padding
+        print(format_unindented(" " * left_padding + stripped + " " * right_padding, BOLD_BLUE))
     print()
 
 
-def draw_box_top(width: int) -> str:
-    """Draw top border of a retro pixel box."""
-    return "╔" + "═" * (width - 2) + "╗"
+def _draw_box_border(width: int, left: str, right: str) -> str:
+    """Draw a box border line."""
+    return left + "═" * (width - 2) + right
 
 
-def draw_box_bottom(width: int) -> str:
-    """Draw bottom border of a retro pixel box."""
-    return "╚" + "═" * (width - 2) + "╝"
+def _get_display_width(text: str) -> int:
+    """Calculate the display width of text, accounting for emojis and wide characters."""
+    width = 0
+    for char in text:
+        # Check if character is an emoji or wide character
+        if unicodedata.east_asian_width(char) in ('W', 'F'):
+            width += 2  # Wide characters (including most emojis) take 2 columns
+        else:
+            width += 1  # Regular characters take 1 column
+    return width
 
 
 def _print_menu_line(line: str, width: int) -> None:
     """Print a single menu line with borders, centered."""
-    total_padding = width - len(line) - 2  # -2 for borders
-    left_padding = 1
-    right_padding = total_padding - left_padding
-
+    line_width = _get_display_width(line)
+    right_padding = width - line_width - 3  # -3 for borders and left padding
+    
     print(format_unindented("║", BOLD_BLUE), end="")
-    print(f"{BOLD}{' ' * left_padding}{line}{' ' * right_padding}{NC}", end="")
+    print(f"{BOLD} {line}{' ' * right_padding}{NC}", end="")
     print(format_unindented("║", BOLD_BLUE))
 
 
 def print_menu() -> None:
     """Print the main menu with retro pixel borders."""
-    menu_lines = [
-        f"  {key}. {description}" for key, description in MENU_OPTIONS.items()
-    ]
-    width = max(len(line) for line in menu_lines) + 8
+    menu_lines = [f"  {key}. {description}" for key, description in MENU_OPTIONS.items()]
+    width = _get_menu_width()
 
-    print(format_unindented(draw_box_top(width), BOLD_BLUE))
+    print(format_unindented(_draw_box_border(width, "╔", "╗"), BOLD_BLUE))
     for line in menu_lines:
         _print_menu_line(line, width)
-    print(format_unindented(draw_box_bottom(width), BOLD_BLUE))
+    print(format_unindented(_draw_box_border(width, "╚", "╝"), BOLD_BLUE))
     print()
 
 
@@ -152,7 +174,7 @@ def print_version_info(info: VersionInfo) -> None:
 def _print_label_value(label: str, value: str) -> None:
     """Print a label and value on separate lines with proper indentation."""
     print(format_message(label))
-    print(format_message(f"    {value.lstrip()}"))
+    print(format_message(f"    {value}"))
 
 
 def _print_warnings_and_tips(launch_info: dict) -> None:
@@ -225,9 +247,7 @@ def print_launch_info() -> None:
 def get_update_status_message(info: VersionInfo) -> str:
     """Determine update status and return formatted message."""
     if not info.local:
-        return format_message(
-            "💡 No active version. You can install the latest version by pressing 2"
-        )
+        return format_message("💡 No active version. You can install the latest version by pressing 2")
 
     if info.latest_remote != info.latest_local:
         message = format_message(
@@ -235,8 +255,7 @@ def get_update_status_message(info: VersionInfo) -> str:
             YELLOW,
         )
         if info.latest_local:
-            local_note = f"   (You have {info.latest_local} locally, you can update to the latest version by pressing 2)"
-            message += f"\n{format_message(local_note)}"
+            message += f"\n{format_message(f'   (You have {info.latest_local} locally, you can update to the latest version by pressing 2)')}"
         return message
 
     if info.latest_remote != info.local:
@@ -293,10 +312,7 @@ def show_help() -> None:
     print()
     print(format_message("📖 Help & Information", BOLD_BLUE))
     print()
-    print()
-
     print(format_message("Menu Options:"))
-    print()
     print_bold("1. Check Current Setup Information")
     print_bold("   - Shows version info (current, latest local, latest remote)")
     print_bold("   - Displays launch configuration and update status")
@@ -348,19 +364,18 @@ def handle_menu_choice(choice: str) -> None:
 
 def get_user_choice() -> str:
     """Get user menu choice."""
+    _clear_line = "\r" + " " * 60 + "\r"
+    
     while True:
         print(format_message("  Press [1-4] to select: "), end="", flush=True)
         choice = getch()
 
         if ord(choice) == ESC_KEY:
-            next_char = getch_timeout(0.15)
-            if not next_char:
+            if not getch_timeout(0.15):
                 exit_app()
-            while True:
-                char = getch_timeout(0.05)
-                if not char:
-                    break
-            print("\r" + " " * 60 + "\r", end="", flush=True)
+            while getch_timeout(0.05):
+                pass
+            print(_clear_line, end="", flush=True)
             continue
 
         choice = choice.strip().lower()
@@ -368,4 +383,4 @@ def get_user_choice() -> str:
             print(choice)
             return choice
 
-        print("\r" + " " * 60 + "\r", end="", flush=True)
+        print(_clear_line, end="", flush=True)

@@ -23,16 +23,11 @@ def get_appimage_path(version: str) -> Path:
     return DOWNLOADS_DIR / f"cursor-{version}.AppImage"
 
 
-def bytes_to_mb(bytes_size: int) -> int:
-    """Convert bytes to MB."""
-    return bytes_size // 1024 // 1024
-
-
 def _show_download_progress(downloaded: int, total_size: int) -> None:
     """Display download progress."""
     percent = (downloaded / total_size) * 100
-    mb_downloaded = bytes_to_mb(downloaded)
-    mb_total = bytes_to_mb(total_size)
+    mb_downloaded = downloaded // 1024 // 1024
+    mb_total = total_size // 1024 // 1024
     print(f"\r   {percent:.1f}% ({mb_downloaded}MB/{mb_total}MB)", end="", flush=True)
 
 
@@ -87,7 +82,7 @@ def download_version(version: str) -> bool:
     return True
 
 
-def _backup_existing_file(file_path: Path) -> None:
+def _backup_file(file_path: Path) -> None:
     """Backup an existing file by renaming it."""
     backup_path = file_path.with_suffix(".AppImage.backup")
     if backup_path.exists():
@@ -100,29 +95,23 @@ def _remove_case_variants(link: Path) -> None:
     """Remove any existing cursor appimage files with different case."""
     for pattern in CURSOR_APPIMAGE_PATTERNS:
         for existing_file in link.parent.glob(pattern):
-            if (
-                existing_file.name.lower() == "cursor.appimage"
-                and existing_file != link
-            ):
+            if existing_file.name.lower() == "cursor.appimage" and existing_file != link:
                 if existing_file.is_symlink():
                     existing_file.unlink()
                 elif existing_file.exists():
-                    _backup_existing_file(existing_file)
-                return  # Only handle one variant
+                    _backup_file(existing_file)
+                return
 
 
 def create_symlink(target: Path, link: Path) -> bool:
     """Create a symlink, removing existing one if present."""
     link.parent.mkdir(parents=True, exist_ok=True)
-
-    # Remove any existing cursor appimage files with different case
     _remove_case_variants(link)
 
-    # Remove the target link if it exists
     if link.is_symlink():
         link.unlink()
     elif link.exists():
-        _backup_existing_file(link)
+        _backup_file(link)
 
     try:
         link.symlink_to(target)
@@ -137,11 +126,11 @@ def update_desktop_file() -> bool:
         return False
 
     try:
-        with open(DESKTOP_FILE, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-
+        content = DESKTOP_FILE.read_text(encoding="utf-8")
+        lines = content.splitlines(keepends=True)
         new_lines = []
         updated = False
+        
         for line in lines:
             if line.startswith("Exec="):
                 parts = line.strip().split()

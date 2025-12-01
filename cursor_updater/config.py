@@ -43,10 +43,10 @@ DESKTOP_FILE = Path.home() / ".local" / "share" / "applications" / "cursor.deskt
 
 # Menu options
 MENU_OPTIONS = {
-    "1": "Check Current Setup Information",
-    "2": "Update Cursor to latest version",
-    "3": "Help",
-    "4": "Exit",
+    "1": "🔍 Check Current Setup Information",
+    "2": "🔄 Update Cursor to latest version",
+    "3": "📖 Help",
+    "4": "🚪 Exit",
 }
 
 # Messages
